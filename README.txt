@@ -3,7 +3,7 @@
 ## PROBLEM 1: Portfolio Examination and Optimization 
 -- file main_FinanceApplication_portfolio
 
-## PROBLEM 2: Forecasting Financial Time Series 
+## PROBLEM 2: Forecasting Financial Time Series using Machine Learning
 -- file main_FinanceApplication_forecasting
 
 The Python files demonstrate some of my first steps to develop a trading system.
