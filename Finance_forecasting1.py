@@ -7,17 +7,30 @@ from sklearn import ensemble, metrics, preprocessing, cross_validation,feature_s
 import WebScraperFinance as wsf # imported from WebScraperFinance.py file
 
 # Python Environment: 3.5 interpreter
-# last updated 01/03/2016
-# Project: Quant Finance Modeling
+# first version: 01/03/2016
+# last updated 01/11/2016
 
-## PROBLEM 2: Forecasting Financial Time Series 
 
+## PROBLEM 2: Forecasting Financial Time Series
+# at this point only predicting direction of movement
+ 
+def process_s(s):
+    s=s.dropna(axis=2, how='any')  # drop stocks that have NaNs, that is, stock data for specified range was not available from yahoo finance  
+    for item in ['Open', 'High', 'Low']:
+            s[item] = s[item] * s['Adj Close'] / s['Close']
+    s.drop(['Close'], inplace=True)
+    s.rename(items={'Adj Close': 'Close'}, inplace=True)    
+    s['PercChange']=s['Close'].pct_change()
+    s['MarketCap']=s['Close']*s['Volume']
+    s['Range']=(s['High']-s['Low'])      
+    s=s.fillna(method='backfill') 
+    return (s)
 
 def main():
     
     # define dates and stocks   
     start = datetime.datetime(2015, 1, 4, 0, 0, 0, 0, pytz.utc)    
-    end = datetime.datetime.today().utcnow()
+    #end = datetime.datetime.today().utcnow()
     end = datetime.datetime(2015, 12, 2, 0, 0, 0, 0, pytz.utc)
     print('Daily stock prices will be downloaded from', start ,'to', end )
 
@@ -34,30 +47,21 @@ def main():
     # get daily stock info (only historical daily data). 
     s = web.DataReader(stocks, 'yahoo', start, end)   
     #s_actions = web.DataReader(stocks, 'yahoo-actions', start,end)
-   
-    s=s.dropna(axis=2, how='any')  # drop stocks that have NaNs, that is, stock data for specified range was not available from yahoo finance  
-    for item in ['Open', 'High', 'Low']:
-            s[item] = s[item] * s['Adj Close'] / s['Close']
-    s.drop(['Close'], inplace=True)
-    s.rename(items={'Adj Close': 'Close'}, inplace=True)    
-    s['PercChange']=s['Close'].pct_change()
-    s['MarketCap']=s['Close']*s['Volume']
-    s['Range']=(s['High']-s['Low'])      
-    s=s.fillna(method='backfill')     
+    s = process_s(s)
     print('The following SP 500 stocks will be analyzed: ', s.Close.columns)
     
     print('Deriving features...')
-    # collect and prepare data: derive features / preprocessing
+    ## collect and prepare data: derive features / preprocessing
     shift=0 # backward shift from end of time series = day you want to predict/test model
     test_day=len(s.Close)-shift
     train_day_minus_two=test_day-2
     train_day_minus_one=test_day-1       
     
-    # feature derivation and selection: I have no finance background, so this is going to be interesting...
+    # feature derivation and selection: I have no finance background, so this is going to be interesting and open to huge improvement...
 
     # feature 1: sector (categorical), extract from wikipedia web scraper
     sectorList=[]
-    for stock in s.Volume.columns[:-1]:        
+    for stock in s.Volume.columns[:-1]:  # this can probably be improved from a computational point of view      
         for item in all_info_dict:
           if item['stock'] == stock:
               #print (stock, 'matches', item['stock'], 'and sector is:', item['sector'])
@@ -73,7 +77,7 @@ def main():
     beta = np.array([[covariance_pch.loc[marketref, stock] / variance_pch] for stock in s.Volume.columns[:-1]]) # GSPC not used as stock  
     
     
-    # features 3-8: Volume, LogReturns-1, LogReturns-2, Range-1, Range-2, EMA(Exponential Moving Average) only one iteration - close price
+    # features 3-8: Volume, LogReturns-1, LogReturns-2, Range-1, Range-2, EMA(Exponential Moving Average) only one iteration minus close price
     LogReturns = np.log(s.Close / s.Close.shift(1))
     LogReturns=LogReturns.fillna(method='backfill') 
     Twindow=21;factor1=2/(Twindow+1);factor2=1-2/(Twindow+1)
@@ -106,7 +110,7 @@ def main():
     sel = feature_selection.VarianceThreshold(threshold=(.8 * (1 - .8)))
     data_temp = sel.fit_transform(data_temp) # some of the original features don't appear to be useful
     data = np.concatenate((sectorEnc,data_temp), axis=1).astype(np.object, copy=False)      
-    data[:,0]=data[:,0].astype(np.int,copy=False) # make sure categorical is int
+    data[:,0]=data[:,0].astype(np.int,copy=False) # make sure categorical is int, I chose not to one hot code here as you may do it that way in random forest classification
      
        
     # partitioning data sets
@@ -116,7 +120,7 @@ def main():
     ## Machine Learning Classification
     print('Machine Learning Classification...predicting direction of LogReturn movement of day:', end-datetime.timedelta(days=2) )
     # Random Forest predict train_day_minus_two
-    clf_RF = ensemble.RandomForestClassifier(n_estimators=1000,n_jobs=2)
+    clf_RF = ensemble.RandomForestClassifier(n_estimators=100,n_jobs=2)
     clf_RFfit = clf_RF.fit(Xtrain, Y1train)
     y_predRF_InSample = clf_RFfit.predict(Xtrain)
     y_predRF_OutSample = clf_RFfit.predict(Xval)
@@ -128,6 +132,7 @@ def main():
 
     ## To do: A lot, read up more on finance to derive better features, include much more stocks from different markets, etc; 
     ## extend scraping the web for useful info beyond yahoo finance, blend various classifiers, try multioutput, etc
+    ## also predict real numeric value instead of direction of movement
 
     
     

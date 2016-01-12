@@ -15,7 +15,8 @@ import WebScraperFinance as wsf # imported from WebScraperFinance.py file
 
 
 # Python Environment: 3.5 interpreter
-# last updated 01/03/2016
+# first version: 01/03/2016
+# last updated 01/11/2016
 # Project: Quant Finance Modeling
 
 ## PROBLEM 1: Portfolio Examination and Optimization 
@@ -33,12 +34,6 @@ def portfolio_stats(portfolio,weights):
     return (Pstats,LogReturns,AnnPerformance,CovPortfolio)
 
 
-   
-def min_func_sharpe(weights):
-      return -portfolio_stats(portfolio,weights)[0][2] # max Sharp Ratio, that is, minimize neg.
-
-def min_func_variance(weights):
-      return portfolio_stats(portfolio,weights)[0][1]**2 # convert SD back to var
 
 def portfolio_montecarlo (n_sim, n_stocks,LogReturns):
     ExpectPortfolioReturn = []
@@ -90,6 +85,18 @@ def get_pca(portfolio):
     ScorePCA=PCA().fit_transform(portfolio)
     return (ExplVar,ScorePCA)
 
+def process_s(s):
+    s=s.dropna(axis=2, how='any')  # drop stocks that have NaNs, that is, stock data for specified range was not available from yahoo finance  
+    for item in ['Open', 'High', 'Low']:
+            s[item] = s[item] * s['Adj Close'] / s['Close']
+    s.drop(['Close'], inplace=True)
+    s.rename(items={'Adj Close': 'Close'}, inplace=True)    
+    s['PercChange']=s['Close'].pct_change()
+    s['MarketCap']=s['Close']*s['Volume']
+    s['Range']=(s['High']-s['Low'])      
+    s=s.fillna(method='backfill') 
+    return (s)
+
 def main():
     
     # define dates and stocks   
@@ -110,15 +117,7 @@ def main():
     s = web.DataReader(stocks, 'yahoo', start, end)   
     #s_actions = web.DataReader(stocks, 'yahoo-actions', start,end)
     
-    s=s.dropna(axis=2, how='any')  # drop stocks that have NaNs, that is, stock data for specified range was not available from yahoo finance  
-    for item in ['Open', 'High', 'Low']:
-            s[item] = s[item] * s['Adj Close'] / s['Close']
-    s.drop(['Close'], inplace=True)
-    s.rename(items={'Adj Close': 'Close'}, inplace=True)    
-    s['PercChange']=s['Close'].pct_change()
-    s['MarketCap']=s['Close']*s['Volume']
-    s['Range']=(s['High']-s['Low'])      
-    s=s.fillna(method='backfill') 
+    s = process_s(s)    
     print('The following stocks will be analyzed: ', s.Close.columns)
     
     ## Clustering of all stocks (unsupervised) based on daily Range values (assume daily range/variation is most informative feature)
@@ -126,7 +125,7 @@ def main():
     Dail_Volat = preprocessing.scale(np.array(s['Range']))  
     Dail_Volat = Dail_Volat.copy().T
     n_samples, n_features = Dail_Volat.shape # n_samples are stocks, n_features are daily ranges for n days    
-    n_clusters=2 # makes more sense when downloading more stocks like all SP 500 stocks, so increase n_clusters to maybe 10
+    n_clusters=2 # makes more sense when downloading more stocks like all SP 500 stocks, then maybe 10
     pca = PCA(n_components=n_clusters).fit(Dail_Volat)
 
     # Kmeans clustering    
@@ -140,7 +139,6 @@ def main():
     ## Optimization of given portfolio using Close values
     portfolio=s['Close']
    
-
     # Exploring portfolio via PCA
     ExplVar,ScorePCA=get_pca(portfolio)
 
@@ -151,15 +149,22 @@ def main():
     Initialguess = n_stocks * [1. / n_stocks,] # initial guess to start simulation, choose all weights to be equal
     
     # the following optimizations currently only works in interactive mode and portfolio named portfolio!
-    '''
+    def min_func_sharpe(weights):
+      return -portfolio_stats(portfolio,weights)[0][2] # max Sharp Ratio, that is, minimize neg.
+
+    def min_func_variance(weights):
+      return portfolio_stats(portfolio,weights)[0][1]**2 # **2 convert SD back to var
+
+
     Popt_W = sco.minimize(min_func_sharpe, Initialguess, method='SLSQP', bounds=bounds, constraints=constraints) 
     Popt_Var = sco.minimize(min_func_variance, Initialguess, method='SLSQP', bounds=bounds, constraints=constraints) 
     # see results
     print ('Optimum weights of portfolio: ', Popt_W['x'].round(4))
     portfolio.head()
     print ('Optimum variance of portfolio: ', Popt_Var['x'].round(4))
-    '''
-
+    
+    
+    
     # get basic stats of portfolio 
     Pstats,LogReturns,AnnPerformance,CovPortfolio=portfolio_stats(portfolio,Initialguess)
     
@@ -174,7 +179,7 @@ def main():
     marketref = '^GSPC'
     print('Plots will be generated...')
     portfolio_mov=stocks_moving_window(s['Close'],w1,w2,marketref) # returns pandas panel with stocks as items
-    print('done')
+    print('Program done')
     # also saves plots (rolling moving windows tiem series and betas) for each stock in current directory!
 
 
